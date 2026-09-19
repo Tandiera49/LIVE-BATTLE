@@ -21,6 +21,13 @@ public class BattleGameView extends View {
     private final List<Projectile> projectiles = new ArrayList<>();
     private final List<Effect> effects = new ArrayList<>();
     private final List<Supporter> supporters = new ArrayList<>();
+    private final List<BattleEvent> eventQueue = new ArrayList<>();
+
+    private long lastEventProcess = 0L;
+    private long lastFireAccepted = 0L;
+
+    private static final long FIRE_COOLDOWN_MS = 90L;
+    private static final long EVENT_INTERVAL_MS = 70L;
 
     private static final int BLUE = Color.rgb(30, 130, 255);
     private static final int RED = Color.rgb(255, 55, 85);
@@ -66,6 +73,17 @@ public class BattleGameView extends View {
             "@Arga17"
     };
 
+
+    private static final int STATE_LOBBY = 0;
+    private static final int STATE_COUNTDOWN = 1;
+    private static final int STATE_BATTLE = 2;
+    private static final int STATE_FINISHED = 3;
+
+    private int battleState = STATE_LOBBY;
+    private float countdownSeconds = 0f;
+    private int battleSeconds = 180;
+    private long battleStartedAt = 0L;
+
     private int demoIndex = 0;
 
     public BattleGameView(Context context) {
@@ -85,6 +103,7 @@ public class BattleGameView extends View {
         drawHeader(c, w);
         drawTeamPanels(c, w);
         drawArena(c, w, h);
+        drawCountdownOverlay(c, w, h);
         drawProjectiles(c);
         drawEffects(c);
         drawBattleInfo(c, w, h);
@@ -275,8 +294,16 @@ public class BattleGameView extends View {
         text(c, "ATTACK", w * .69f, top + 38, 8,
                 Color.rgb(255, 140, 150), Paint.Align.CENTER);
 
-        if (battleStarted) {
+        if (battleState == STATE_BATTLE) {
             text(c, "TAP ARENA = FIRE",
+                    mid, top + 58, 13,
+                    GOLD, Paint.Align.CENTER);
+        } else if (battleState == STATE_COUNTDOWN) {
+            text(c, "BERSIAP...",
+                    mid, top + 58, 13,
+                    GOLD, Paint.Align.CENTER);
+        } else if (battleState == STATE_FINISHED) {
+            text(c, "WAR SELESAI",
                     mid, top + 58, 13,
                     GOLD, Paint.Align.CENTER);
         } else {
@@ -286,7 +313,7 @@ public class BattleGameView extends View {
         }
 
         // Live battle status
-        if (battleStarted && !finished) {
+        if (battleState == STATE_BATTLE) {
             text(c, "● LIVE WAR",
                     mid, bottom - 12, 10,
                     Color.rgb(255, 80, 95), Paint.Align.CENTER);
@@ -297,6 +324,43 @@ public class BattleGameView extends View {
                     mid, bottom - 27, 19,
                     GOLD, Paint.Align.CENTER);
         }
+    }
+
+    private void drawCountdownOverlay(Canvas c, float w, float h) {
+        if (battleState != STATE_COUNTDOWN) {
+            return;
+        }
+
+        float top = h * .28f;
+        float bottom = h * .64f;
+
+        p.setColor(Color.argb(175, 0, 0, 0));
+        c.drawRoundRect(
+                12, top,
+                w - 12, bottom,
+                24, 24, p
+        );
+
+        int number = Math.max(
+                1,
+                (int) Math.ceil(countdownSeconds)
+        );
+
+        text(c,
+                String.valueOf(number),
+                w / 2,
+                (top + bottom) / 2f + 24,
+                76,
+                GOLD,
+                Paint.Align.CENTER);
+
+        text(c,
+                "BERSIAP UNTUK WAR!",
+                w / 2,
+                (top + bottom) / 2f + 58,
+                15,
+                Color.WHITE,
+                Paint.Align.CENTER);
     }
 
     private void drawBunker(Canvas c, float x, float y, int color) {
@@ -396,6 +460,48 @@ public class BattleGameView extends View {
 
         text(c, "VS", w / 2, y + 28, 15,
                 Color.WHITE, Paint.Align.CENTER);
+
+        int totalSeconds = battleSeconds;
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+
+        String timer = String.format(
+                Locale.US,
+                "%02d:%02d",
+                minutes,
+                seconds
+        );
+
+        if (battleState == STATE_COUNTDOWN) {
+            int number = Math.max(
+                    1,
+                    (int) Math.ceil(countdownSeconds)
+            );
+
+            text(c, String.valueOf(number),
+                    w / 2, y + 66, 34,
+                    GOLD, Paint.Align.CENTER);
+
+        } else if (battleState == STATE_BATTLE) {
+            text(c, timer,
+                    w / 2, y + 66, 24,
+                    GOLD, Paint.Align.CENTER);
+
+            text(c, "TIME",
+                    w / 2, y + 82, 8,
+                    Color.rgb(170, 175, 190),
+                    Paint.Align.CENTER);
+
+        } else if (battleState == STATE_FINISHED) {
+            text(c, "00:00",
+                    w / 2, y + 66, 24,
+                    GOLD, Paint.Align.CENTER);
+
+            text(c, "WAR SELESAI",
+                    w / 2, y + 82, 8,
+                    Color.rgb(170, 175, 190),
+                    Paint.Align.CENTER);
+        }
     }
 
     private void drawHp(Canvas c, float x, float y, float width,
@@ -431,9 +537,10 @@ public class BattleGameView extends View {
     private void drawControls(Canvas c, float w, float h) {
         float y = h * .81f;
 
-        if (!battleStarted) {
+        if (battleState == STATE_LOBBY) {
             text(c, "PILIH TIM UNTUK IKUT PERANG",
-                    w / 2, y - 18, 13, Color.WHITE, Paint.Align.CENTER);
+                    w / 2, y - 18, 13,
+                    Color.WHITE, Paint.Align.CENTER);
 
             button(c, 16, y, w / 2 - 22, 60,
                     "🔵 TEAM A", BLUE);
@@ -443,7 +550,8 @@ public class BattleGameView extends View {
 
             text(c, "Nama kamu akan tampil di LIVE",
                     w / 2, y + 78, 10,
-                    Color.rgb(175, 180, 195), Paint.Align.CENTER);
+                    Color.rgb(175, 180, 195),
+                    Paint.Align.CENTER);
 
             button(c, 16, y + 92, w - 32, 58,
                     selectedTeam == 0
@@ -455,13 +563,38 @@ public class BattleGameView extends View {
 
             text(c, "🎁 GIFT = AMUNISI  •  🚀 GIFT BESAR = SENJATA NAIK LEVEL",
                     w / 2, y + 169, 9,
-                    Color.rgb(175, 180, 195), Paint.Align.CENTER);
+                    Color.rgb(175, 180, 195),
+                    Paint.Align.CENTER);
+            return;
+        }
+
+        if (battleState == STATE_COUNTDOWN) {
+            text(c, "⚔️ WAR AKAN DIMULAI",
+                    w / 2, y - 18, 13,
+                    GOLD, Paint.Align.CENTER);
+
+            text(c, "BERSIAP • JANGAN TAP DULU",
+                    w / 2, y + 18, 11,
+                    Color.WHITE, Paint.Align.CENTER);
+
+            return;
+        }
+
+        if (battleState == STATE_FINISHED) {
+            text(c, "🏆 WAR SELESAI",
+                    w / 2, y - 18, 15,
+                    GOLD, Paint.Align.CENTER);
+
+            button(c, 16, y + 8, w - 32, 58,
+                    "🔥 MULAI RONDE BARU",
+                    Color.rgb(210, 105, 20));
 
             return;
         }
 
         text(c, "👆 TAP = TEMBAK   •   🎁 GIFT = AMUNISI   •   🚀 GIFT BESAR = SENJATA NAIK LEVEL",
-                w / 2, y - 18, 9, GOLD, Paint.Align.CENTER);
+                w / 2, y - 18, 9,
+                GOLD, Paint.Align.CENTER);
 
         button(c, 16, y, w - 32, 58,
                 "👆 TAP ARENA UNTUK MENEMBAK",
@@ -469,10 +602,12 @@ public class BattleGameView extends View {
 
         text(c, "TEST EVENT / SIMULATOR",
                 w / 2, y + 83, 10,
-                Color.rgb(150, 155, 170), Paint.Align.CENTER);
+                Color.rgb(150, 155, 170),
+                Paint.Align.CENTER);
 
         button(c, 16, y + 96, (w - 44) / 3,
-                48, "🎁 ROSE", Color.rgb(35, 105, 210));
+                48, "🎁 ROSE",
+                Color.rgb(35, 105, 210));
 
         button(c, 22 + (w - 44) / 3, y + 96,
                 (w - 44) / 3, 48, "💎 MEGA",
@@ -505,15 +640,22 @@ public class BattleGameView extends View {
         float w = getWidth();
         float h = getHeight();
 
-        if (!battleStarted) {
+        if (battleState == STATE_LOBBY) {
             handleLobbyTouch(x, y, w, h);
             return true;
         }
 
-        if (finished) {
-            if (y > h * .80f) {
+        if (battleState == STATE_COUNTDOWN) {
+            return true;
+        }
+
+        if (battleState == STATE_FINISHED) {
+            float controlsY = h * .81f;
+
+            if (y >= controlsY + 8 && y <= controlsY + 66) {
                 resetBattle();
             }
+
             return true;
         }
 
@@ -557,10 +699,7 @@ public class BattleGameView extends View {
                 return;
             }
 
-            battleStarted = true;
-            lastEvent = "WAR DIMULAI!";
-            addEffect("WAR DIMULAI!", w / 2, getHeight() * .45f,
-                    28, 255, 210, 60);
+            startCountdown();
         }
     }
 
@@ -584,12 +723,55 @@ public class BattleGameView extends View {
         }
     }
 
+    private void startCountdown() {
+        battleState = STATE_COUNTDOWN;
+        battleStarted = false;
+        finished = false;
+        countdownSeconds = 3f;
+        lastEvent = "WAR DIMULAI DALAM 3...";
+
+        addEffect(
+                "GET READY!",
+                getWidth() / 2f,
+                getHeight() * .45f,
+                28,
+                255,
+                210,
+                60
+        );
+    }
+
+    private void beginBattle() {
+        battleState = STATE_BATTLE;
+        battleStarted = true;
+        finished = false;
+        battleStartedAt = System.currentTimeMillis();
+        battleSeconds = 180;
+        lastEvent = "WAR DIMULAI!";
+
+        addEffect(
+                "WAR DIMULAI!",
+                getWidth() / 2f,
+                getHeight() * .45f,
+                28,
+                255,
+                210,
+                60
+        );
+    }
+
     private void fireTap() {
-        if (selectedTeam == 0) {
+        if (selectedTeam == 0 || !battleStarted || finished) {
             return;
         }
 
         long now = System.currentTimeMillis();
+
+        if (now - lastFireAccepted < FIRE_COOLDOWN_MS) {
+            return;
+        }
+
+        lastFireAccepted = now;
 
         if (now - lastTap < 450) {
             combo++;
@@ -675,14 +857,38 @@ public class BattleGameView extends View {
         }
     }
 
-    private void gift(String gift, int levelUp, int ammo) {
-        String name = demoNames[demoIndex++ % demoNames.length];
+    private void enqueueGift(String name, int team, String gift, int levelUp, int ammo) {
+        eventQueue.add(BattleEvent.gift(name, team, gift, levelUp, ammo));
+        lastEvent = name + " mengirim " + gift;
+    }
 
-        if (selectedTeam == 0) {
-            selectedTeam = 1;
+    private void processEventQueue() {
+        long now = System.currentTimeMillis();
+
+        if (!battleStarted || finished) {
+            return;
         }
 
-        boolean teamA = selectedTeam == 1;
+        if (eventQueue.isEmpty() || now - lastEventProcess < EVENT_INTERVAL_MS) {
+            return;
+        }
+
+        BattleEvent event = eventQueue.remove(0);
+        lastEventProcess = now;
+
+        if (event.type == BattleEvent.TYPE_GIFT) {
+            applyGift(event.name, event.team, event.gift, event.levelUp, event.ammo);
+        }
+    }
+
+    private void applyGift(
+            String name,
+            int team,
+            String gift,
+            int levelUp,
+            int ammo
+    ) {
+        boolean teamA = team == 1;
 
         if (teamA) {
             teamAAmmo += ammo;
@@ -719,14 +925,80 @@ public class BattleGameView extends View {
                             weaponName(teamA ? teamALevel : teamBLevel),
                     getWidth() / 2f,
                     getHeight() * .48f,
-                    17, 255, 210, 60
+                    17,
+                    255,
+                    210,
+                    60
             );
         }
+    }
+
+    private static final class BattleEvent {
+        static final int TYPE_GIFT = 1;
+
+        final int type;
+        final String name;
+        final int team;
+        final String gift;
+        final int levelUp;
+        final int ammo;
+
+        private BattleEvent(
+                int type,
+                String name,
+                int team,
+                String gift,
+                int levelUp,
+                int ammo
+        ) {
+            this.type = type;
+            this.name = name;
+            this.team = team;
+            this.gift = gift;
+            this.levelUp = levelUp;
+            this.ammo = ammo;
+        }
+
+        static BattleEvent gift(
+                String name,
+                int team,
+                String gift,
+                int levelUp,
+                int ammo
+        ) {
+            return new BattleEvent(
+                    TYPE_GIFT,
+                    name,
+                    team,
+                    gift,
+                    levelUp,
+                    ammo
+            );
+        }
+    }
+
+    private void gift(String gift, int levelUp, int ammo) {
+        if (selectedTeam == 0) {
+            selectedTeam = 1;
+            joinTeam(1);
+        }
+
+        String name = demoNames[demoIndex++ % demoNames.length];
+
+        enqueueGift(
+                name,
+                selectedTeam,
+                gift,
+                levelUp,
+                ammo
+        );
     }
 
     private void checkWinner() {
         if (teamAHp <= 0 || teamBHp <= 0) {
             finished = true;
+            battleStarted = false;
+            battleState = STATE_FINISHED;
 
             String winner;
 
@@ -764,16 +1036,67 @@ public class BattleGameView extends View {
 
         projectiles.clear();
         effects.clear();
+        eventQueue.clear();
+
+        lastEventProcess = 0L;
+        lastFireAccepted = 0L;
+        lastTap = 0L;
 
         finished = false;
         battleStarted = false;
+        battleState = STATE_LOBBY;
+        countdownSeconds = 0f;
+        selectedTeam = 0;
+        supporters.clear();
+        battleSeconds = 180;
+        battleStartedAt = 0L;
 
         lastEvent = "PILIH TIM UNTUK BATTLE BARU";
         featuredName = "";
         featuredGift = "";
     }
 
+    private void updateBattleState(float dt) {
+        if (battleState == STATE_COUNTDOWN) {
+            countdownSeconds -= dt;
+
+            if (countdownSeconds <= 0f) {
+                beginBattle();
+            }
+        }
+
+        if (battleState == STATE_BATTLE && battleStartedAt > 0L) {
+            long elapsedMs =
+                    System.currentTimeMillis() - battleStartedAt;
+
+            battleSeconds = Math.max(
+                    0,
+                    180 - (int)(elapsedMs / 1000L)
+            );
+
+            if (battleSeconds <= 0) {
+                finished = true;
+                battleStarted = false;
+                battleState = STATE_FINISHED;
+                lastEvent = "WAKTU HABIS!";
+
+                addEffect(
+                        "WAKTU HABIS!",
+                        getWidth() / 2f,
+                        getHeight() * .48f,
+                        30,
+                        255,
+                        210,
+                        60
+                );
+            }
+        }
+    }
+
     private void updateGame(float dt) {
+        updateBattleState(dt);
+        processEventQueue();
+
         for (int i = projectiles.size() - 1; i >= 0; i--) {
             Projectile q = projectiles.get(i);
 
