@@ -144,10 +144,10 @@ public class BattleGameView extends View {
             c.drawRect(0, y, w, y + 1, p);
         }
 
-        p.setColor(Color.argb(18, BLUE));
+        p.setColor(Color.argb(18, Color.red(BLUE), Color.green(BLUE), Color.blue(BLUE)));
         c.drawCircle(w * .12f, h * .42f, w * .35f, p);
 
-        p.setColor(Color.argb(18, RED));
+        p.setColor(Color.argb(18, Color.red(RED), Color.green(RED), Color.blue(RED)));
         c.drawCircle(w * .88f, h * .42f, w * .35f, p);
     }
 
