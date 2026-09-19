@@ -138,11 +138,14 @@ public class BattleGameView extends View {
                 Color.rgb(170, 175, 190), Paint.Align.CENTER);
 
         if (!battleStarted) {
-            text(c, "PILIH TIM • KUMPULKAN SUPPORTER • MULAI PERANG",
-                    w / 2, 96, 11, GOLD, Paint.Align.CENTER);
+            text(c, "🔥 LIVE WAR LOBBY 🔥",
+                    w / 2, 96, 16, GOLD, Paint.Align.CENTER);
+
+            text(c, "PENONTON: PILIH TIMMU!",
+                    w / 2, 116, 11, Color.WHITE, Paint.Align.CENTER);
         } else if (!finished) {
-            text(c, "WAR IN PROGRESS", w / 2, 96, 12,
-                    Color.rgb(255, 90, 110), Paint.Align.CENTER);
+            text(c, "⚔️ WAR ON — SUPPORT TIMMU!",
+                    w / 2, 96, 13, GOLD, Paint.Align.CENTER);
         }
     }
 
@@ -201,31 +204,111 @@ public class BattleGameView extends View {
     private void drawArena(Canvas c, float w, float h) {
         float top = h * .28f;
         float bottom = h * .64f;
+        float left = 12;
+        float right = w - 12;
+        float mid = w / 2f;
 
-        p.setColor(Color.argb(25, 255, 255, 255));
-        c.drawRoundRect(12, top, w - 12, bottom, 24, 24, p);
+        // Main war map
+        p.setShader(new LinearGradient(
+                0, top, 0, bottom,
+                Color.rgb(22, 72, 48),
+                Color.rgb(10, 35, 28),
+                Shader.TileMode.CLAMP
+        ));
+        c.drawRoundRect(left, top, right, bottom, 24, 24, p);
+        p.setShader(null);
+
+        // Team territory
+        p.setColor(Color.argb(45, 35, 100, 220));
+        c.drawRoundRect(left, top, mid, bottom, 24, 24, p);
+
+        p.setColor(Color.argb(45, 220, 45, 55));
+        c.drawRoundRect(mid, top, right, bottom, 24, 24, p);
+
+        // Battle lanes
+        p.setColor(Color.argb(45, 255, 255, 255));
+        c.drawRect(left + 25, top + 78, right - 25, top + 80, p);
+        c.drawRect(left + 25, top + 145, right - 25, top + 147, p);
+
+        // Central war road
+        p.setColor(Color.argb(80, 55, 55, 60));
+        c.drawRoundRect(mid - 55, top + 42, mid + 55, bottom - 35, 18, 18, p);
 
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(2);
-        p.setColor(Color.argb(80, 255, 255, 255));
-        c.drawRoundRect(12, top, w - 12, bottom, 24, 24, p);
-        p.setStyle(Paint.Style.FILL);
+        p.setColor(Color.argb(90, 255, 255, 255));
+        c.drawRoundRect(mid - 55, top + 42, mid + 55, bottom - 35, 18, 18, p);
 
+        // Front line
+        p.setColor(Color.argb(170, 255, 210, 70));
+        p.setStrokeWidth(3);
+        c.drawLine(mid, top + 35, mid, bottom - 25, p);
+
+        text(c, "WAR ZONE", mid, top + 31, 10,
+                GOLD, Paint.Align.CENTER);
+
+        // Small defensive bunkers
+        drawBunker(c, w * .31f, top + 75, BLUE);
+        drawBunker(c, w * .69f, top + 75, RED);
+        drawBunker(c, w * .31f, bottom - 55, BLUE);
+        drawBunker(c, w * .69f, bottom - 55, RED);
+
+        // Base shields
         float baseY = bottom - 38;
+
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(3);
+        p.setColor(Color.argb(120, 70, 160, 255));
+        c.drawCircle(w * .18f, baseY, 52, p);
+
+        p.setColor(Color.argb(120, 255, 70, 90));
+        c.drawCircle(w * .82f, baseY, 52, p);
+        p.setStyle(Paint.Style.FILL);
 
         drawBase(c, w * .18f, baseY, BLUE, "A");
         drawBase(c, w * .82f, baseY, RED, "B");
 
-        text(c, battleStarted ? "TAP ARENA = FIRE" : "PILIH TIM DULU",
-                w / 2, top + 32, 14,
-                battleStarted ? GOLD : Color.WHITE,
-                Paint.Align.CENTER);
+        // Direction indicators
+        text(c, "ATTACK", w * .31f, top + 38, 8,
+                Color.rgb(130, 190, 255), Paint.Align.CENTER);
+
+        text(c, "ATTACK", w * .69f, top + 38, 8,
+                Color.rgb(255, 140, 150), Paint.Align.CENTER);
+
+        if (battleStarted) {
+            text(c, "TAP ARENA = FIRE",
+                    mid, top + 58, 13,
+                    GOLD, Paint.Align.CENTER);
+        } else {
+            text(c, "PILIH TIM DULU",
+                    mid, top + 58, 13,
+                    Color.WHITE, Paint.Align.CENTER);
+        }
+
+        // Live battle status
+        if (battleStarted && !finished) {
+            text(c, "● LIVE WAR",
+                    mid, bottom - 12, 10,
+                    Color.rgb(255, 80, 95), Paint.Align.CENTER);
+        }
 
         if (combo >= 3) {
             text(c, "COMBO x" + combo,
-                    w / 2, bottom - 14, 20,
+                    mid, bottom - 27, 19,
                     GOLD, Paint.Align.CENTER);
         }
+    }
+
+    private void drawBunker(Canvas c, float x, float y, int color) {
+        p.setColor(Color.argb(110, color >> 16 & 255,
+                color >> 8 & 255, color & 255));
+        c.drawRoundRect(x - 22, y - 12, x + 22, y + 12, 7, 7, p);
+
+        p.setColor(Color.rgb(48, 48, 58));
+        c.drawRect(x - 13, y - 8, x + 13, y + 8, p);
+
+        p.setColor(color);
+        c.drawCircle(x, y - 10, 5, p);
     }
 
     private void drawBase(Canvas c, float x, float y, int color, String label) {
@@ -245,15 +328,46 @@ public class BattleGameView extends View {
 
     private void drawProjectiles(Canvas c) {
         for (Projectile q : projectiles) {
-            p.setColor(q.color);
-            c.drawCircle(q.getX(), q.getY(), q.size, p);
+            float x = q.getX();
+            float y = q.getY();
 
-            p.setColor(Color.argb(90,
+            float trail = q.size * 3.5f;
+
+            p.setColor(Color.argb(
+                    45,
                     Color.red(q.color),
                     Color.green(q.color),
-                    Color.blue(q.color)));
+                    Color.blue(q.color)
+            ));
+            c.drawCircle(x, y, trail, p);
 
-            c.drawCircle(q.getX(), q.getY(), q.size * 2.2f, p);
+            p.setColor(Color.argb(
+                    90,
+                    Color.red(q.color),
+                    Color.green(q.color),
+                    Color.blue(q.color)
+            ));
+            c.drawCircle(x, y, q.size * 1.8f, p);
+
+            p.setColor(q.color);
+            c.drawCircle(x, y, q.size, p);
+
+            if ("MISSILE".equals(q.weapon)) {
+                p.setColor(Color.WHITE);
+                c.drawCircle(x - (q.fromA ? 10 : -10), y, 3, p);
+            } else if ("AIR STRIKE".equals(q.weapon)) {
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(2);
+                p.setColor(Color.argb(180,
+                        Color.red(q.color),
+                        Color.green(q.color),
+                        Color.blue(q.color)));
+                c.drawCircle(x, y, q.size * 2.8f, p);
+                p.setStyle(Paint.Style.FILL);
+            } else if ("ULTIMATE".equals(q.weapon)) {
+                p.setColor(GOLD);
+                c.drawCircle(x, y, q.size * 2.4f, p);
+            }
         }
     }
 
@@ -318,33 +432,54 @@ public class BattleGameView extends View {
         float y = h * .81f;
 
         if (!battleStarted) {
+            text(c, "PILIH TIM UNTUK IKUT PERANG",
+                    w / 2, y - 18, 13, Color.WHITE, Paint.Align.CENTER);
+
             button(c, 16, y, w / 2 - 22, 60,
-                    "JOIN TEAM A", BLUE);
+                    "🔵 TEAM A", BLUE);
 
             button(c, w / 2 + 6, y, w / 2 - 22, 60,
-                    "JOIN TEAM B", RED);
+                    "🔴 TEAM B", RED);
 
-            button(c, 16, y + 70, w - 32, 54,
-                    "START WAR", Color.rgb(210, 105, 20));
+            text(c, "Nama kamu akan tampil di LIVE",
+                    w / 2, y + 78, 10,
+                    Color.rgb(175, 180, 195), Paint.Align.CENTER);
+
+            button(c, 16, y + 92, w - 32, 58,
+                    selectedTeam == 0
+                            ? "⚔️ PILIH TIM DULU"
+                            : "🔥 MULAI PERANG!",
+                    selectedTeam == 0
+                            ? Color.rgb(70, 70, 80)
+                            : Color.rgb(210, 105, 20));
+
+            text(c, "🎁 GIFT = AMUNISI  •  🚀 GIFT BESAR = SENJATA NAIK LEVEL",
+                    w / 2, y + 169, 9,
+                    Color.rgb(175, 180, 195), Paint.Align.CENTER);
 
             return;
         }
 
+        text(c, "👆 TAP = TEMBAK   •   🎁 GIFT = AMUNISI   •   🚀 GIFT BESAR = SENJATA NAIK LEVEL",
+                w / 2, y - 18, 9, GOLD, Paint.Align.CENTER);
+
         button(c, 16, y, w - 32, 58,
-                "TAP ANYWHERE IN ARENA TO FIRE",
+                "👆 TAP ARENA UNTUK MENEMBAK",
                 selectedTeam == 1 ? BLUE : RED);
 
-        text(c, "GIFT SIMULATOR", w / 2, y + 83, 10,
+        text(c, "TEST EVENT / SIMULATOR",
+                w / 2, y + 83, 10,
                 Color.rgb(150, 155, 170), Paint.Align.CENTER);
 
         button(c, 16, y + 96, (w - 44) / 3,
-                48, "ROSE", Color.rgb(35, 105, 210));
+                48, "🎁 ROSE", Color.rgb(35, 105, 210));
 
         button(c, 22 + (w - 44) / 3, y + 96,
-                (w - 44) / 3, 48, "MEGA", Color.rgb(155, 45, 100));
+                (w - 44) / 3, 48, "💎 MEGA",
+                Color.rgb(155, 45, 100));
 
         button(c, 28 + ((w - 44) / 3) * 2, y + 96,
-                (w - 44) / 3, 48, "ULT GIFT",
+                (w - 44) / 3, 48, "🚀 ULT GIFT",
                 Color.rgb(205, 75, 30));
     }
 
@@ -501,11 +636,18 @@ public class BattleGameView extends View {
 
         float startX = fromA ? w * .22f : w * .78f;
         float targetX = fromA ? w * .78f : w * .22f;
-        float y = h * .45f;
-
-        int color = fromA ? BLUE : RED;
 
         String weapon = weaponName(fromA ? teamALevel : teamBLevel);
+
+        int lane = (int)(System.currentTimeMillis() % 3);
+        float[] lanes = {
+                h * .37f,
+                h * .45f,
+                h * .53f
+        };
+        float y = lanes[lane];
+
+        int color = fromA ? BLUE : RED;
 
         projectiles.add(new Projectile(
                 startX,
@@ -513,21 +655,14 @@ public class BattleGameView extends View {
                 targetX,
                 y,
                 color,
-                weapon
+                weapon,
+                fromA,
+                damage
         ));
 
-        if (fromA) {
-            teamBHp -= damage;
-            lastEvent = weapon + " TEAM A → TEAM B -" + damage;
-        } else {
-            teamAHp -= damage;
-            lastEvent = weapon + " TEAM B → TEAM A -" + damage;
-        }
+        // Damage diberikan saat projectile benar-benar mencapai target.
+        // Nilai damage disimpan di projectile agar visual dan gameplay sinkron.
 
-        addEffect("-" + damage, targetX, y - 20,
-                20, 255, 90, 90);
-
-        checkWinner();
     }
 
     private String weaponName(int level) {
@@ -645,7 +780,47 @@ public class BattleGameView extends View {
             q.progress += dt * 2.8f;
 
             if (q.progress >= 1f) {
+                float hitX = q.targetX;
+                float hitY = q.targetY;
+
+                if (q.fromA) {
+                    teamBHp -= q.damage;
+                    lastEvent = q.weapon + " TEAM A → TEAM B -" + q.damage;
+                } else {
+                    teamAHp -= q.damage;
+                    lastEvent = q.weapon + " TEAM B → TEAM A -" + q.damage;
+                }
+
+                addEffect(
+                        "-" + q.damage,
+                        hitX,
+                        hitY - 20,
+                        "ULTIMATE".equals(q.weapon) ? 28 : 20,
+                        255, 90, 90
+                );
+
+                if ("AIR STRIKE".equals(q.weapon)) {
+                    addEffect(
+                            "AIR STRIKE!",
+                            hitX,
+                            hitY - 45,
+                            18,
+                            255, 190, 60
+                    );
+                }
+
+                if ("ULTIMATE".equals(q.weapon)) {
+                    addEffect(
+                            "ULTIMATE HIT!",
+                            hitX,
+                            hitY - 55,
+                            25,
+                            255, 210, 60
+                    );
+                }
+
                 projectiles.remove(i);
+                checkWinner();
             }
         }
 
@@ -693,19 +868,43 @@ public class BattleGameView extends View {
         float targetX;
         float targetY;
         float progress;
-        float size = 7;
+        float size;
         int color;
         String weapon;
+        boolean fromA;
+        int damage;
 
         Projectile(float startX, float startY,
                    float targetX, float targetY,
-                   int color, String weapon) {
+                   int color, String weapon,
+                   boolean fromA,
+                   int damage) {
             this.startX = startX;
             this.startY = startY;
             this.targetX = targetX;
             this.targetY = targetY;
             this.color = color;
             this.weapon = weapon;
+            this.fromA = fromA;
+            this.damage = damage;
+
+            switch (weapon) {
+                case "BULLET":
+                    this.size = 5;
+                    break;
+                case "CANNON":
+                    this.size = 8;
+                    break;
+                case "MISSILE":
+                    this.size = 9;
+                    break;
+                case "AIR STRIKE":
+                    this.size = 11;
+                    break;
+                default:
+                    this.size = 15;
+                    break;
+            }
         }
 
         float getX() {
