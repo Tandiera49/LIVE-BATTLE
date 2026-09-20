@@ -6,6 +6,9 @@ import android.view.View;
 
 public class MainActivity extends Activity {
 
+    private BattleGameView gameView;
+    private TikTokEventServer eventServer;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -19,6 +22,31 @@ public class MainActivity extends Activity {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
 
-        setContentView(new BattleGameView(this));
+        gameView = new BattleGameView(this);
+        setContentView(gameView);
+
+        eventServer = new TikTokEventServer(
+                (type, username, giftId, giftName, count) ->
+                        gameView.post(() ->
+                                gameView.handleTikTokEvent(
+                                        type,
+                                        username,
+                                        giftId,
+                                        giftName,
+                                        count
+                                )
+                        )
+        );
+
+        eventServer.start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (eventServer != null) {
+            eventServer.stop();
+        }
+
+        super.onDestroy();
     }
 }

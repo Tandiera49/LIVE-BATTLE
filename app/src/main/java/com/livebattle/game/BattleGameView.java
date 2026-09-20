@@ -618,8 +618,48 @@ public class BattleGameView extends View {
 
     private void drawEffects(Canvas c) {
         for (Effect e : effects) {
-            float alpha = Math.max(0, Math.min(255,
-                    (int)(255 * e.life / e.maxLife)));
+            float lifeRatio = Math.max(0f,
+                    Math.min(1f, e.life / e.maxLife));
+            int alpha = Math.max(0,
+                    Math.min(255, (int)(255 * lifeRatio)));
+
+            if (e.explosion) {
+                float progress = 1f - lifeRatio;
+                float radius = e.size * (0.35f + progress * 0.9f);
+
+                // Cahaya inti ledakan.
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(Color.argb(
+                        Math.max(0, Math.min(255, alpha)),
+                        255, 190, 60
+                ));
+                c.drawCircle(e.x, e.y, radius * 0.42f, p);
+
+                // Gelombang ledakan keluar.
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(2f, e.size * 0.10f));
+                p.setColor(Color.argb(
+                        Math.max(0, Math.min(255, (int)(alpha * 0.85f))),
+                        255, 110, 20
+                ));
+                c.drawCircle(e.x, e.y, radius, p);
+
+                // Ring kedua untuk impact yang lebih jelas.
+                p.setStrokeWidth(Math.max(1.5f, e.size * 0.055f));
+                p.setColor(Color.argb(
+                        Math.max(0, Math.min(255, (int)(alpha * 0.55f))),
+                        255, 220, 90
+                ));
+                c.drawCircle(
+                        e.x,
+                        e.y,
+                        radius * 0.65f,
+                        p
+                );
+
+                p.setStyle(Paint.Style.FILL);
+                continue;
+            }
 
             text(c, e.value, e.x, e.y, e.size,
                     Color.argb(alpha, e.r, e.g, e.b),
@@ -884,10 +924,131 @@ public class BattleGameView extends View {
         }
     }
 
+
+    public void handleTikTokEvent(
+            String type,
+            String username,
+            String giftId,
+            String giftName,
+            int count
+    ) {
+        if (type == null) {
+            return;
+        }
+
+        String eventType = type.trim().toLowerCase(Locale.ROOT);
+        String name = (username == null || username.trim().isEmpty())
+                ? "@TikTok"
+                : username.trim();
+
+        if (eventType.equals("join")) {
+            int team = teamForTikTokUser(name);
+
+            if (team == 1) {
+                lastEvent = name + " bergabung TEAM A";
+            } else {
+                lastEvent = name + " bergabung TEAM B";
+            }
+
+            joinTeam(team, name);
+            return;
+        }
+
+        if (eventType.equals("like")) {
+            int team = teamForTikTokUser(name);
+
+            if (team == 1) {
+                combo = Math.min(combo + 1, 99);
+            } else {
+                combo = Math.min(combo + 1, 99);
+            }
+
+            featuredName = name;
+            featuredGift = "LIKE";
+
+            lastEvent = name + " memberikan LIKE";
+
+            addEffect(
+                    "LIKE",
+                    getWidth() / 2f,
+                    getHeight() * .43f,
+                    18,
+                    255,
+                    210,
+                    60
+            );
+
+            return;
+        }
+
+        if (eventType.equals("gift")) {
+            int team = teamForTikTokUser(name);
+
+            String normalizedGift = giftName == null
+                    ? ""
+                    : giftName.trim().toUpperCase(Locale.ROOT);
+
+            if (normalizedGift.isEmpty() && "5655".equals(giftId)) {
+                normalizedGift = "ROSE";
+            }
+
+            if (normalizedGift.isEmpty()) {
+                normalizedGift = "GIFT";
+            }
+
+            int safeCount = Math.min(Math.max(count, 1), 20);
+
+            int levelUp;
+            int ammo;
+
+            if ("ROSE".equals(normalizedGift) || "5655".equals(giftId)) {
+                levelUp = 1;
+                ammo = 10;
+            } else if (normalizedGift.contains("ULTIMATE")) {
+                levelUp = 3;
+                ammo = 180;
+            } else if (normalizedGift.contains("MEGA")) {
+                levelUp = 2;
+                ammo = 70;
+            } else {
+                levelUp = 1;
+                ammo = 10;
+            }
+
+            for (int i = 0; i < safeCount; i++) {
+                enqueueGift(
+                        name,
+                        team,
+                        normalizedGift,
+                        levelUp,
+                        ammo
+                );
+            }
+
+            return;
+        }
+
+        if (eventType.equals("liveended")) {
+            lastEvent = "TikTok LIVE SELESAI";
+        }
+    }
+
+    private int teamForTikTokUser(String username) {
+        int hash = username.toLowerCase(Locale.ROOT).hashCode();
+        return (hash & 1) == 0 ? 1 : 2;
+    }
+
     private void joinTeam(int team) {
+        String name = demoNames[demoIndex++ % demoNames.length];
+        joinTeam(team, name);
+    }
+
+    private void joinTeam(int team, String name) {
         selectedTeam = team;
 
-        String name = demoNames[demoIndex++ % demoNames.length];
+        if (name == null || name.trim().isEmpty()) {
+            name = "@TikTok";
+        }
 
         Supporter unit = new Supporter(name, team);
         supporters.add(unit);
@@ -1382,6 +1543,31 @@ public class BattleGameView extends View {
                 float hitX = q.targetX;
                 float hitY = q.targetY;
 
+                float explosionSize;
+                switch (q.weapon) {
+                    case "BULLET":
+                        explosionSize = 18f;
+                        break;
+                    case "CANNON":
+                        explosionSize = 26f;
+                        break;
+                    case "MISSILE":
+                        explosionSize = 34f;
+                        break;
+                    case "AIR STRIKE":
+                        explosionSize = 46f;
+                        break;
+                    default:
+                        explosionSize = 58f;
+                        break;
+                }
+
+                effects.add(Effect.explosion(
+                        hitX,
+                        hitY,
+                        explosionSize
+                ));
+
                 if (q.targetUnit != null) {
                     Supporter target = q.targetUnit;
 
@@ -1761,7 +1947,38 @@ public class BattleGameView extends View {
         }
 
         float getY() {
-            return startY + (targetY - startY) * progress;
+            float t = Math.max(0f, Math.min(1f, progress));
+
+            // Garis dasar dari titik awal menuju target.
+            float baseY = startY + (targetY - startY) * t;
+
+            // Lengkungan parabola:
+            // t=0  -> titik awal
+            // t=0.5 -> titik tertinggi
+            // t=1  -> tepat di target
+            float arcHeight;
+
+            switch (weapon) {
+                case "BULLET":
+                    arcHeight = 35f;
+                    break;
+                case "CANNON":
+                    arcHeight = 55f;
+                    break;
+                case "MISSILE":
+                    arcHeight = 75f;
+                    break;
+                case "AIR STRIKE":
+                    arcHeight = 100f;
+                    break;
+                default:
+                    arcHeight = 120f;
+                    break;
+            }
+
+            float arc = -arcHeight * 4f * t * (1f - t);
+
+            return baseY + arc;
         }
     }
 
@@ -1772,6 +1989,7 @@ public class BattleGameView extends View {
         float size;
         float life = 1.2f;
         float maxLife = 1.2f;
+        boolean explosion = false;
         int r;
         int g;
         int b;
@@ -1785,6 +2003,14 @@ public class BattleGameView extends View {
             this.r = r;
             this.g = g;
             this.b = b;
+        }
+
+        static Effect explosion(float x, float y, float size) {
+            Effect e = new Effect("", x, y, size, 255, 150, 30);
+            e.explosion = true;
+            e.life = 0.45f;
+            e.maxLife = 0.45f;
+            return e;
         }
     }
 
