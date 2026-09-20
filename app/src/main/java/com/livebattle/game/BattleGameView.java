@@ -1,6 +1,8 @@
 package com.livebattle.game;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -18,10 +20,18 @@ import java.util.Locale;
 public class BattleGameView extends View {
 
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Bitmap arenaBitmap;
     private final List<Projectile> projectiles = new ArrayList<>();
     private final List<Effect> effects = new ArrayList<>();
     private final List<Supporter> supporters = new ArrayList<>();
     private final List<BattleEvent> eventQueue = new ArrayList<>();
+
+    // ===== WAR TERRITORY UNITS =====
+    private static final float UNIT_MAX_HP = 100f;
+    private static final float UNIT_SPEED = 28f;
+    private static final float UNIT_ATTACK_RANGE = 95f;
+    private static final long UNIT_ATTACK_COOLDOWN_MS = 900L;
+    private static final long UNIT_RESPAWN_MS = 2500L;
 
     private long lastEventProcess = 0L;
     private long lastFireAccepted = 0L;
@@ -88,6 +98,12 @@ public class BattleGameView extends View {
 
     public BattleGameView(Context context) {
         super(context);
+
+        arenaBitmap = BitmapFactory.decodeResource(
+                getResources(),
+                R.drawable.live_battle_arena_map
+        );
+
         p.setTypeface(Typeface.create("sans", Typeface.BOLD));
         setFocusable(true);
     }
@@ -103,6 +119,8 @@ public class BattleGameView extends View {
         drawHeader(c, w);
         drawTeamPanels(c, w);
         drawArena(c, w, h);
+        drawFrontline(c, w, h);
+        drawWarUnits(c);
         drawCountdownOverlay(c, w, h);
         drawProjectiles(c);
         drawEffects(c);
@@ -223,106 +241,131 @@ public class BattleGameView extends View {
     private void drawArena(Canvas c, float w, float h) {
         float top = h * .28f;
         float bottom = h * .64f;
-        float left = 12;
-        float right = w - 12;
-        float mid = w / 2f;
+        float left = 12f;
+        float right = w - 12f;
 
-        // Main war map
-        p.setShader(new LinearGradient(
-                0, top, 0, bottom,
-                Color.rgb(22, 72, 48),
-                Color.rgb(10, 35, 28),
-                Shader.TileMode.CLAMP
-        ));
-        c.drawRoundRect(left, top, right, bottom, 24, 24, p);
-        p.setShader(null);
+        // Arena background baru.
+        if (arenaBitmap != null) {
+            float dstW = right - left;
+            float dstH = bottom - top;
 
-        // Team territory
-        p.setColor(Color.argb(45, 35, 100, 220));
-        c.drawRoundRect(left, top, mid, bottom, 24, 24, p);
+            float srcW = arenaBitmap.getWidth();
+            float srcH = arenaBitmap.getHeight();
 
-        p.setColor(Color.argb(45, 220, 45, 55));
-        c.drawRoundRect(mid, top, right, bottom, 24, 24, p);
+            float scale = Math.max(dstW / srcW, dstH / srcH);
 
-        // Battle lanes
-        p.setColor(Color.argb(45, 255, 255, 255));
-        c.drawRect(left + 25, top + 78, right - 25, top + 80, p);
-        c.drawRect(left + 25, top + 145, right - 25, top + 147, p);
+            float drawW = srcW * scale;
+            float drawH = srcH * scale;
 
-        // Central war road
-        p.setColor(Color.argb(80, 55, 55, 60));
-        c.drawRoundRect(mid - 55, top + 42, mid + 55, bottom - 35, 18, 18, p);
+            float dx = left + (dstW - drawW) / 2f;
+            float dy = top + (dstH - drawH) / 2f;
 
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(2);
-        p.setColor(Color.argb(90, 255, 255, 255));
-        c.drawRoundRect(mid - 55, top + 42, mid + 55, bottom - 35, 18, 18, p);
+            c.save();
+            c.clipRect(left, top, right, bottom);
 
-        // Front line
-        p.setColor(Color.argb(170, 255, 210, 70));
-        p.setStrokeWidth(3);
-        c.drawLine(mid, top + 35, mid, bottom - 25, p);
+            p.setAlpha(255);
+            p.setFilterBitmap(true);
 
-        text(c, "WAR ZONE", mid, top + 31, 10,
-                GOLD, Paint.Align.CENTER);
+            c.drawBitmap(
+                    arenaBitmap,
+                    dx,
+                    dy,
+                    p
+            );
 
-        // Small defensive bunkers
-        drawBunker(c, w * .31f, top + 75, BLUE);
-        drawBunker(c, w * .69f, top + 75, RED);
-        drawBunker(c, w * .31f, bottom - 55, BLUE);
-        drawBunker(c, w * .69f, bottom - 55, RED);
-
-        // Base shields
-        float baseY = bottom - 38;
-
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(3);
-        p.setColor(Color.argb(120, 70, 160, 255));
-        c.drawCircle(w * .18f, baseY, 52, p);
-
-        p.setColor(Color.argb(120, 255, 70, 90));
-        c.drawCircle(w * .82f, baseY, 52, p);
-        p.setStyle(Paint.Style.FILL);
-
-        drawBase(c, w * .18f, baseY, BLUE, "A");
-        drawBase(c, w * .82f, baseY, RED, "B");
-
-        // Direction indicators
-        text(c, "ATTACK", w * .31f, top + 38, 8,
-                Color.rgb(130, 190, 255), Paint.Align.CENTER);
-
-        text(c, "ATTACK", w * .69f, top + 38, 8,
-                Color.rgb(255, 140, 150), Paint.Align.CENTER);
-
-        if (battleState == STATE_BATTLE) {
-            text(c, "TAP ARENA = FIRE",
-                    mid, top + 58, 13,
-                    GOLD, Paint.Align.CENTER);
-        } else if (battleState == STATE_COUNTDOWN) {
-            text(c, "BERSIAP...",
-                    mid, top + 58, 13,
-                    GOLD, Paint.Align.CENTER);
-        } else if (battleState == STATE_FINISHED) {
-            text(c, "WAR SELESAI",
-                    mid, top + 58, 13,
-                    GOLD, Paint.Align.CENTER);
+            c.restore();
         } else {
-            text(c, "PILIH TIM DULU",
-                    mid, top + 58, 13,
-                    Color.WHITE, Paint.Align.CENTER);
+            p.setColor(Color.rgb(15, 25, 30));
+            c.drawRoundRect(
+                    left,
+                    top,
+                    right,
+                    bottom,
+                    24,
+                    24,
+                    p
+            );
         }
 
-        // Live battle status
+        // Lapisan tipis agar unit/gameplay tetap mudah terlihat.
+        p.setColor(Color.argb(22, 0, 0, 0));
+        c.drawRoundRect(
+                left,
+                top,
+                right,
+                bottom,
+                24,
+                24,
+                p
+        );
+
+        float mid = w / 2f;
+
+        // Status arena dinamis tetap berasal dari game.
         if (battleState == STATE_BATTLE) {
-            text(c, "● LIVE WAR",
-                    mid, bottom - 12, 10,
-                    Color.rgb(255, 80, 95), Paint.Align.CENTER);
+            text(
+                    c,
+                    "TAP ARENA = FIRE",
+                    mid,
+                    top + 58,
+                    13,
+                    GOLD,
+                    Paint.Align.CENTER
+            );
+        } else if (battleState == STATE_COUNTDOWN) {
+            text(
+                    c,
+                    "BERSIAP...",
+                    mid,
+                    top + 58,
+                    13,
+                    GOLD,
+                    Paint.Align.CENTER
+            );
+        } else if (battleState == STATE_FINISHED) {
+            text(
+                    c,
+                    "WAR SELESAI",
+                    mid,
+                    top + 58,
+                    13,
+                    GOLD,
+                    Paint.Align.CENTER
+            );
+        } else {
+            text(
+                    c,
+                    "PILIH TIM DULU",
+                    mid,
+                    top + 58,
+                    13,
+                    Color.WHITE,
+                    Paint.Align.CENTER
+            );
+        }
+
+        if (battleState == STATE_BATTLE) {
+            text(
+                    c,
+                    "● LIVE WAR",
+                    mid,
+                    bottom - 12,
+                    10,
+                    Color.rgb(255, 80, 95),
+                    Paint.Align.CENTER
+            );
         }
 
         if (combo >= 3) {
-            text(c, "COMBO x" + combo,
-                    mid, bottom - 27, 19,
-                    GOLD, Paint.Align.CENTER);
+            text(
+                    c,
+                    "COMBO x" + combo,
+                    mid,
+                    bottom - 27,
+                    19,
+                    GOLD,
+                    Paint.Align.CENTER
+            );
         }
     }
 
@@ -388,6 +431,143 @@ public class BattleGameView extends View {
 
         text(c, "BASE " + label, x, y + 5, 10,
                 Color.WHITE, Paint.Align.CENTER);
+    }
+
+    private float getFrontlineX() {
+        float w = getWidth();
+
+        float totalA = 0f;
+        float totalB = 0f;
+        int countA = 0;
+        int countB = 0;
+
+        for (Supporter unit : supporters) {
+            if (!unit.alive) {
+                continue;
+            }
+
+            if (unit.team == 1) {
+                totalA += unit.x;
+                countA++;
+            } else {
+                totalB += unit.x;
+                countB++;
+            }
+        }
+
+        if (countA == 0 || countB == 0) {
+            return w * FRONTLINE_CENTER;
+        }
+
+        float avgA = totalA / countA;
+        float avgB = totalB / countB;
+
+        return (avgA + avgB) / 2f;
+    }
+
+    private void drawFrontline(Canvas c, float w, float h) {
+        if (battleState != STATE_BATTLE) {
+            return;
+        }
+
+        float top = h * .31f;
+        float bottom = h * .61f;
+        float x = getFrontlineX();
+
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(3);
+        p.setColor(Color.argb(190, 255, 205, 55));
+
+        c.drawLine(x, top + 8, x, bottom - 8, p);
+
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(Color.argb(35, 255, 205, 55));
+        c.drawRect(x - 12, top, x + 12, bottom, p);
+
+        text(
+                c,
+                "FRONTLINE",
+                x,
+                top + 14,
+                8,
+                GOLD,
+                Paint.Align.CENTER
+        );
+    }
+
+    private void drawWarUnits(Canvas c) {
+        for (Supporter unit : supporters) {
+            if (!unit.alive) {
+                continue;
+            }
+
+            int teamColor = unit.team == 1 ? BLUE : RED;
+
+            // Unit body
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.argb(220, 12, 18, 25));
+            c.drawCircle(unit.x, unit.y, 15, p);
+
+            p.setColor(teamColor);
+            c.drawCircle(unit.x, unit.y, 11, p);
+
+            // Unit direction / weapon marker
+            p.setColor(Color.WHITE);
+            c.drawCircle(
+                    unit.team == 1 ? unit.x + 5 : unit.x - 5,
+                    unit.y - 2,
+                    3,
+                    p
+            );
+
+            // HP bar
+            float hpRatio = Math.max(0f, Math.min(1f, unit.hp / UNIT_MAX_HP));
+            float barWidth = 38f;
+
+            p.setColor(Color.argb(170, 0, 0, 0));
+            c.drawRoundRect(
+                    unit.x - barWidth / 2,
+                    unit.y - 25,
+                    unit.x + barWidth / 2,
+                    unit.y - 20,
+                    3,
+                    3,
+                    p
+            );
+
+            p.setColor(teamColor);
+            c.drawRoundRect(
+                    unit.x - barWidth / 2,
+                    unit.y - 25,
+                    unit.x - barWidth / 2 + barWidth * hpRatio,
+                    unit.y - 20,
+                    3,
+                    3,
+                    p
+            );
+
+            // Supporter name
+            text(
+                    c,
+                    unit.name,
+                    unit.x,
+                    unit.y + 30,
+                    9,
+                    Color.WHITE,
+                    Paint.Align.CENTER
+            );
+
+            // Weapon level
+            text(
+                    c,
+                    "LV" + unit.weaponLevel,
+                    unit.x,
+                    unit.y + 42,
+                    8,
+                    GOLD,
+                    Paint.Align.CENTER
+            );
+        }
     }
 
     private void drawProjectiles(Canvas c) {
@@ -708,19 +888,22 @@ public class BattleGameView extends View {
 
         String name = demoNames[demoIndex++ % demoNames.length];
 
+        Supporter unit = new Supporter(name, team);
+        supporters.add(unit);
+
         if (team == 1) {
             teamASupporters++;
-            supporters.add(new Supporter(name, 1));
             lastEvent = name + " bergabung TEAM A";
             featuredName = name;
             featuredGift = "JOINED TEAM A";
         } else {
             teamBSupporters++;
-            supporters.add(new Supporter(name, 2));
             lastEvent = name + " bergabung TEAM B";
             featuredName = name;
             featuredGift = "JOINED TEAM B";
         }
+
+        spawnSupporter(unit, getWidth(), getHeight());
     }
 
     private void startCountdown() {
@@ -747,6 +930,11 @@ public class BattleGameView extends View {
         finished = false;
         battleStartedAt = System.currentTimeMillis();
         battleSeconds = 180;
+
+        for (Supporter unit : supporters) {
+            spawnSupporter(unit, getWidth(), getHeight());
+        }
+
         lastEvent = "WAR DIMULAI!";
 
         addEffect(
@@ -771,18 +959,9 @@ public class BattleGameView extends View {
             return;
         }
 
-        lastFireAccepted = now;
-
-        if (now - lastTap < 450) {
-            combo++;
-        } else {
-            combo = 1;
-        }
-
-        lastTap = now;
-
         int team = selectedTeam;
 
+        // Ammo harus diperiksa sebelum cooldown diterima.
         if (team == 1 && teamAAmmo <= 0) {
             lastEvent = "TEAM A KEHABISAN AMMO";
             return;
@@ -793,13 +972,90 @@ public class BattleGameView extends View {
             return;
         }
 
-        if (team == 1) {
+        lastFireAccepted = now;
+
+        if (now - lastTap < 450) {
+            combo++;
+        } else {
+            combo = 1;
+        }
+
+        lastTap = now;
+
+        boolean fromA = team == 1;
+        int damage = weaponDamage(fromA ? teamALevel : teamBLevel);
+
+        if (fromA) {
             teamAAmmo--;
-            launchProjectile(true, weaponDamage(teamALevel));
         } else {
             teamBAmmo--;
-            launchProjectile(false, weaponDamage(teamBLevel));
         }
+
+        Supporter target = findNearestEnemyForTap(team);
+
+        if (target != null) {
+            launchProjectileToUnit(
+                    fromA,
+                    damage,
+                    target
+            );
+            lastEvent = "TAP → " + target.name;
+        } else {
+            // Tidak ada unit lawan: tetap arahkan tembakan ke base.
+            launchProjectile(fromA, damage);
+        }
+    }
+
+    private Supporter findNearestEnemyForTap(int team) {
+        Supporter nearest = null;
+        float nearestDistance = Float.MAX_VALUE;
+
+        float centerX = getWidth() / 2f;
+        float centerY = getHeight() * .45f;
+
+        for (Supporter unit : supporters) {
+            if (!unit.alive || unit.team == team) {
+                continue;
+            }
+
+            float dx = unit.x - centerX;
+            float dy = unit.y - centerY;
+            float distance = dx * dx + dy * dy;
+
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = unit;
+            }
+        }
+
+        return nearest;
+    }
+
+    private void launchProjectileToUnit(
+            boolean fromA,
+            int damage,
+            Supporter target
+    ) {
+        float w = getWidth();
+        float h = getHeight();
+
+        float startX = fromA ? w * .22f : w * .78f;
+        float startY = h * .45f;
+
+        String weapon = weaponName(fromA ? teamALevel : teamBLevel);
+        int color = fromA ? BLUE : RED;
+
+        projectiles.add(new Projectile(
+                startX,
+                startY,
+                target.x,
+                target.y,
+                color,
+                weapon,
+                fromA,
+                damage,
+                target
+        ));
     }
 
     private int weaponDamage(int level) {
@@ -898,6 +1154,18 @@ public class BattleGameView extends View {
             teamBAmmo += ammo;
             teamBGifts++;
             teamBLevel = Math.min(5, teamBLevel + levelUp);
+        }
+
+        // Gift memperkuat unit supporter yang mengirimkannya.
+        int teamLevel = teamA ? teamALevel : teamBLevel;
+
+        for (Supporter unit : supporters) {
+            if (unit.team == team && unit.name.equals(name)) {
+                unit.weaponLevel = Math.max(
+                        unit.weaponLevel,
+                        Math.min(5, teamLevel)
+                );
+            }
         }
 
         featuredName = name;
@@ -1096,9 +1364,16 @@ public class BattleGameView extends View {
     private void updateGame(float dt) {
         updateBattleState(dt);
         processEventQueue();
+        updateWarUnits(dt);
 
         for (int i = projectiles.size() - 1; i >= 0; i--) {
             Projectile q = projectiles.get(i);
+
+            // Projectile mengikuti posisi unit selama masih hidup.
+            if (q.targetUnit != null && q.targetUnit.alive) {
+                q.targetX = q.targetUnit.x;
+                q.targetY = q.targetUnit.y;
+            }
 
             q.progress += dt * 2.8f;
 
@@ -1106,44 +1381,116 @@ public class BattleGameView extends View {
                 float hitX = q.targetX;
                 float hitY = q.targetY;
 
-                if (q.fromA) {
-                    teamBHp -= q.damage;
-                    lastEvent = q.weapon + " TEAM A → TEAM B -" + q.damage;
+                if (q.targetUnit != null) {
+                    Supporter target = q.targetUnit;
+
+                    if (target.alive) {
+                        target.hp -= q.damage;
+
+                        lastEvent = q.weapon
+                                + " → "
+                                + target.name
+                                + " -"
+                                + q.damage;
+
+                        addEffect(
+                                "-" + q.damage,
+                                hitX,
+                                hitY - 20,
+                                "ULTIMATE".equals(q.weapon) ? 28 : 20,
+                                255, 90, 90
+                        );
+
+                        if ("AIR STRIKE".equals(q.weapon)) {
+                            addEffect(
+                                    "AIR STRIKE!",
+                                    hitX,
+                                    hitY - 45,
+                                    18,
+                                    255, 190, 60
+                            );
+                        }
+
+                        if ("ULTIMATE".equals(q.weapon)) {
+                            addEffect(
+                                    "ULTIMATE HIT!",
+                                    hitX,
+                                    hitY - 55,
+                                    25,
+                                    255, 210, 60
+                            );
+                        }
+
+                        if (target.hp <= 0f) {
+                            target.die();
+
+                            addEffect(
+                                    "KO!",
+                                    hitX,
+                                    hitY - 55,
+                                    22,
+                                    255, 210, 60
+                            );
+
+                            lastEvent = q.weapon
+                                    + " KO "
+                                    + target.name;
+                        }
+                    } else {
+                        addEffect(
+                                "MISS",
+                                hitX,
+                                hitY - 20,
+                                14,
+                                180, 180, 180
+                        );
+                    }
                 } else {
-                    teamAHp -= q.damage;
-                    lastEvent = q.weapon + " TEAM B → TEAM A -" + q.damage;
-                }
+                    // Projectile tanpa target unit tetap menyerang base.
+                    if (q.fromA) {
+                        teamBHp -= q.damage;
+                        lastEvent = q.weapon
+                                + " TEAM A → TEAM B -"
+                                + q.damage;
+                    } else {
+                        teamAHp -= q.damage;
+                        lastEvent = q.weapon
+                                + " TEAM B → TEAM A -"
+                                + q.damage;
+                    }
 
-                addEffect(
-                        "-" + q.damage,
-                        hitX,
-                        hitY - 20,
-                        "ULTIMATE".equals(q.weapon) ? 28 : 20,
-                        255, 90, 90
-                );
-
-                if ("AIR STRIKE".equals(q.weapon)) {
                     addEffect(
-                            "AIR STRIKE!",
+                            "-" + q.damage,
                             hitX,
-                            hitY - 45,
-                            18,
-                            255, 190, 60
+                            hitY - 20,
+                            "ULTIMATE".equals(q.weapon) ? 28 : 20,
+                            255, 90, 90
                     );
-                }
 
-                if ("ULTIMATE".equals(q.weapon)) {
-                    addEffect(
-                            "ULTIMATE HIT!",
-                            hitX,
-                            hitY - 55,
-                            25,
-                            255, 210, 60
-                    );
+                    if ("AIR STRIKE".equals(q.weapon)) {
+                        addEffect(
+                                "AIR STRIKE!",
+                                hitX,
+                                hitY - 45,
+                                18,
+                                255, 190, 60
+                        );
+                    }
+
+                    if ("ULTIMATE".equals(q.weapon)) {
+                        addEffect(
+                                "ULTIMATE HIT!",
+                                hitX,
+                                hitY - 55,
+                                25,
+                                255, 210, 60
+                        );
+                    }
+
+                    checkWinner();
                 }
 
                 projectiles.remove(i);
-                checkWinner();
             }
         }
 
@@ -1166,6 +1513,163 @@ public class BattleGameView extends View {
                         18, 255, 255, 255
                 );
             }
+        }
+    }
+
+    // ===== WAR TERRITORY ENGINE =====
+
+    private void spawnSupporter(Supporter unit, float w, float h) {
+        float top = h * .31f;
+        float bottom = h * .61f;
+
+        float minX;
+        float maxX;
+
+        if (unit.team == 1) {
+            minX = w * .09f;
+            maxX = w * .39f;
+        } else {
+            minX = w * .61f;
+            maxX = w * .91f;
+        }
+
+        float x = minX + (float)Math.random() * (maxX - minX);
+        float y = top + (float)Math.random() * (bottom - top);
+
+        unit.spawn(x, y);
+    }
+
+    private void spawnAllSupporters() {
+        float w = getWidth();
+        float h = getHeight();
+
+        for (Supporter unit : supporters) {
+            if (!unit.alive) {
+                spawnSupporter(unit, w, h);
+            }
+        }
+    }
+
+    private Supporter findNearestEnemy(Supporter attacker) {
+        Supporter nearest = null;
+        float nearestDistance = Float.MAX_VALUE;
+
+        for (Supporter unit : supporters) {
+            if (!unit.alive || unit.team == attacker.team) {
+                continue;
+            }
+
+            float dx = unit.x - attacker.x;
+            float dy = unit.y - attacker.y;
+            float distance = (float)Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = unit;
+            }
+        }
+
+        return nearest;
+    }
+
+    private void updateWarUnits(float dt) {
+        if (!battleStarted || finished || battleState != STATE_BATTLE) {
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        float w = getWidth();
+        float h = getHeight();
+
+        for (Supporter unit : supporters) {
+            if (!unit.alive) {
+                if (now >= unit.respawnAt) {
+                    spawnSupporter(unit, w, h);
+                }
+                continue;
+            }
+
+            Supporter enemy = findNearestEnemy(unit);
+
+            if (enemy == null) {
+                continue;
+            }
+
+            float dx = enemy.x - unit.x;
+            float dy = enemy.y - unit.y;
+            float distance = (float)Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > UNIT_ATTACK_RANGE) {
+                if (distance > 0.1f) {
+                    unit.x += (dx / distance) * UNIT_SPEED * dt;
+                    unit.y += (dy / distance) * UNIT_SPEED * dt;
+                }
+            } else if (now - unit.lastAttack >= UNIT_ATTACK_COOLDOWN_MS) {
+                attackUnit(unit, enemy);
+                unit.lastAttack = now;
+            }
+
+            float top = h * .31f;
+            float bottom = h * .61f;
+
+            unit.y = Math.max(top, Math.min(bottom, unit.y));
+
+            if (unit.team == 1) {
+                unit.x = Math.max(w * .07f, Math.min(w * .94f, unit.x));
+            } else {
+                unit.x = Math.max(w * .06f, Math.min(w * .93f, unit.x));
+            }
+        }
+    }
+
+    private void attackUnit(Supporter attacker, Supporter target) {
+        if (!attacker.alive || !target.alive) {
+            return;
+        }
+
+        int level = Math.max(1, attacker.weaponLevel);
+        int damage = weaponDamage(level);
+
+        target.hp -= damage;
+        attacker.damage += damage;
+
+        addEffect(
+                "-" + damage,
+                target.x,
+                target.y - 18,
+                level >= 4 ? 20 : 15,
+                attacker.team == 1 ? 90 : 255,
+                attacker.team == 1 ? 170 : 90,
+                attacker.team == 1 ? 255 : 90
+        );
+
+        addEffect(
+                attacker.team == 1 ? "HIT!" : "HIT!",
+                target.x,
+                target.y - 38,
+                11,
+                255,
+                220,
+                90
+        );
+
+        lastEvent = attacker.name + " menyerang " + target.name;
+
+        if (target.hp <= 0f) {
+            target.die();
+            attacker.kills++;
+
+            addEffect(
+                    "KO!",
+                    target.x,
+                    target.y - 55,
+                    22,
+                    255,
+                    210,
+                    60
+            );
+
+            lastEvent = attacker.name + " mengalahkan " + target.name;
         }
     }
 
@@ -1196,12 +1700,32 @@ public class BattleGameView extends View {
         String weapon;
         boolean fromA;
         int damage;
+        Supporter targetUnit;
 
         Projectile(float startX, float startY,
                    float targetX, float targetY,
                    int color, String weapon,
                    boolean fromA,
                    int damage) {
+            this(
+                    startX,
+                    startY,
+                    targetX,
+                    targetY,
+                    color,
+                    weapon,
+                    fromA,
+                    damage,
+                    null
+            );
+        }
+
+        Projectile(float startX, float startY,
+                   float targetX, float targetY,
+                   int color, String weapon,
+                   boolean fromA,
+                   int damage,
+                   Supporter targetUnit) {
             this.startX = startX;
             this.startY = startY;
             this.targetX = targetX;
@@ -1210,6 +1734,7 @@ public class BattleGameView extends View {
             this.weapon = weapon;
             this.fromA = fromA;
             this.damage = damage;
+            this.targetUnit = targetUnit;
 
             switch (weapon) {
                 case "BULLET":
@@ -1266,9 +1791,40 @@ public class BattleGameView extends View {
         String name;
         int team;
 
+        float x;
+        float y;
+        float hp = UNIT_MAX_HP;
+
+        boolean alive = true;
+        long respawnAt = 0L;
+        long lastAttack = 0L;
+
+        int weaponLevel = 1;
+        int kills = 0;
+        int damage = 0;
+
         Supporter(String name, int team) {
             this.name = name;
             this.team = team;
+        }
+
+        void spawn(float x, float y) {
+            this.x = x;
+            this.y = y;
+            this.hp = UNIT_MAX_HP;
+            this.alive = true;
+            this.respawnAt = 0L;
+            this.lastAttack = 0L;
+        }
+
+        void die() {
+            alive = false;
+            hp = 0f;
+            respawnAt = System.currentTimeMillis() + UNIT_RESPAWN_MS;
+        }
+
+        void respawn(float x, float y) {
+            spawn(x, y);
         }
     }
 }
