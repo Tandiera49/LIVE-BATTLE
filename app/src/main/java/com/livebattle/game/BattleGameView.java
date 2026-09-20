@@ -42,6 +42,7 @@ public class BattleGameView extends View {
     private static final int BLUE = Color.rgb(30, 130, 255);
     private static final int RED = Color.rgb(255, 55, 85);
     private static final int GOLD = Color.rgb(255, 205, 55);
+    private static final float FRONTLINE_CENTER = 0.5f;
 
     private float teamAHp = 1000;
     private float teamBHp = 1000;
